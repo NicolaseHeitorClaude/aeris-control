@@ -131,7 +131,7 @@ function Header() {
             </button>
           ))}
         </div>
-        <button className="icon-btn" onClick={() => scenario('reset')} title="Resetar (condições iniciais)">
+        <button className="icon-btn" onClick={() => scenario('reset')} title="Reset da demonstração (condições iniciais) — não equivale a rearme industrial">
           <RotateCcw size={14} />
         </button>
         <button

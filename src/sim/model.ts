@@ -300,6 +300,43 @@ export function plcRh(s: SimState, i: number) {
   return others.length ? avg(others) : BUILDING.rhSetpoint;
 }
 
+// ---------- Gás: sinalização e rearme ----------
+export const GAS_L1 = 10;
+export const GAS_L2 = 20;
+export const GAS_REARM_MAX = 5;
+
+/** Sinalizador SV do setor: alerta a partir do nível 1 e retido durante a evacuação (intertravamento nível 2). */
+export const sirenOn = (s: SimState, i: number) => s.plcRun && (s.sectors[i].gas >= GAS_L1 || s.sectors[i].gasIsolated);
+
+/** Fonte de vazamento do cenário 7 ainda ativa (antes da intervenção de manutenção). */
+export const gasSourceActive = (s: SimState, i: number) => s.scenario === 'gas' && i === 4;
+
+/** Condições para o rearme industrial do intertravamento de gás. */
+export function gasRearmCheck(s: SimState, i: number) {
+  const x = s.sectors[i];
+  const reasons: string[] = [];
+  if (!x.gasIsolated) reasons.push('Intertravamento não está atuado.');
+  if (gasSourceActive(s, i)) reasons.push('Fonte de vazamento ainda ativa (eliminar a causa: cenário 1 representa a intervenção de manutenção).');
+  if (x.gas >= GAS_REARM_MAX) reasons.push(`Gás em ${x.gas.toFixed(1)} %LIE (exigido < ${GAS_REARM_MAX} %LIE).`);
+  if (!s.plcRun) reasons.push('CLP fora de RUN.');
+  if (!s.mains) reasons.push('Sem alimentação 380 Vca.');
+  return { ok: reasons.length === 0, reasons };
+}
+
+/** Rearme manual do intertravamento de gás: só é aceito se todas as condições forem atendidas. */
+export function gasRearm(s: SimState, i: number) {
+  const chk = gasRearmCheck(s, i);
+  const x = s.sectors[i];
+  if (chk.ok) {
+    x.gasIsolated = false;
+    x.processOn = true;
+    pushLog(s, { t: s.t, id: `RRM-${i}`, sev: 'info', tag: `XV-${i + 1}`, msg: `S${i + 1}: rearme do intertravamento de gás aceito (${x.gas.toFixed(1)} %LIE)`, event: 'EVENTO' });
+  } else {
+    pushLog(s, { t: s.t, id: `RRM-${i}`, sev: 'warn', tag: `XV-${i + 1}`, msg: `S${i + 1}: rearme recusado — ${chk.reasons.join(' ')}`, event: 'EVENTO' });
+  }
+  return chk;
+}
+
 /** Solve coil leaving temperature for a delivered total load Q (kW). */
 function coilLeaving(mDot: number, tIn: number, wIn: number, Q: number) {
   if (mDot < 0.1 || Q <= 0) return { tsa: tIn, wsa: wIn, qs: 0, ql: 0 };
@@ -338,7 +375,7 @@ export function step(s: SimState, dt = 1) {
 
   // 2. Alimentação: 380 Vca e 24 Vcc (fonte com módulo buffer/bateria)
   if (!s.mains) {
-    s.ups = Math.max(0, s.ups - (100 / 3600) * dt); // autonomia ~60 min
+    s.ups = Math.max(0, s.ups - (100 / 3600) * dt); // autonomia ~60 min (hipótese acadêmica, sem dimensionamento em Ah)
     s.cmd24 = s.ups > 0;
   } else {
     s.ups = Math.min(100, s.ups + (100 / 1800) * dt);
@@ -362,8 +399,8 @@ export function step(s: SimState, dt = 1) {
   s.sectors.forEach((sec, i) => {
     const tPlc = plcTemp(s, i);
     const err = tPlc - SP;
-    const gasL1 = sec.gas >= 10;
-    const gasL2 = sec.gas >= 20;
+    const gasL1 = sec.gas >= GAS_L1;
+    const gasL2 = sec.gas >= GAS_L2;
     // Intertravamento NR: gás nível 2 → parada do processo, fechamento da válvula de isolamento
     if (gasL2 && plc) {
       sec.processOn = false;
@@ -509,7 +546,7 @@ export function step(s: SimState, dt = 1) {
     const gCo2 = ((machinesOn ? MODEL.co2ProcM3h[i] : 0) + WORKERS_PER_SECTOR[i] * 0.02) / 3600;
     sec.co2 += ((qAir * (MODEL.co2Out - sec.co2)) / SECTOR_VOLUME + (gCo2 / SECTOR_VOLUME) * 1e6) * dt;
 
-    const leak = s.scenario === 'gas' && i === 4 && !sec.gasIsolated ? MODEL.gasLeak : 0;
+    const leak = gasSourceActive(s, i) && !sec.gasIsolated ? MODEL.gasLeak : 0;
     sec.gas = Math.max(0, sec.gas + (leak - (qAir / SECTOR_VOLUME) * sec.gas) * dt);
     if (sec.gas < 0.01) sec.gas = 0;
 
@@ -624,8 +661,8 @@ function evaluateAlarms(s: SimState) {
         cause: 'Defeito do inversor IF-' + f.id + ' ou do motor (sobrecorrente / sobretemperatura).',
         consequence:
           f.kind === 'SUP'
-            ? `Vazão de insuflação do setor S${f.sector + 1} reduzida; setor tende a ficar em depressão e a aquecer.`
-            : `Vazão de exaustão do setor S${f.sector + 1} reduzida; setor pressurizado e acúmulo de contaminantes.`,
+            ? `Perda de um insuflador em S${f.sector + 1}. O parceiro a 60 Hz (60.000 m³/h) supera a exaustão em frequência mínima: setor levemente pressurizado e com mais ar resfriado.`
+            : `Perda de um exaustor em S${f.sector + 1}. O parceiro a 60 Hz (60.000 m³/h) supera a insuflação em frequência mínima: setor em leve depressão, com infiltração de ar externo.`,
         action: 'CLP elevou o ventilador parceiro para 60 Hz. Bloquear e etiquetar (LOTO) antes da manutenção.',
       });
   });
@@ -651,11 +688,11 @@ function evaluateAlarms(s: SimState) {
     if (x.co2 >= 1000)
       add({ id: `CO2-${i}`, sev: 'warn', tag: `AQ-${i + 1}`, msg: `${c}: CO₂ elevado (${x.co2.toFixed(0)} ppm)`, cause: 'Renovação de ar insuficiente.', consequence: 'Qualidade do ar interior reduzida.', action: 'Aumentar renovação de ar.' });
     if (x.gas >= 20)
-      add({ id: `GAS2-${i}`, sev: 'crit', tag: `GD-${i + 1}`, msg: `${c}: GÁS PERIGOSO — nível 2 (${x.gas.toFixed(1)} %LIE) — EVACUAR`, cause: 'Vazamento de gás/vapor inflamável no processo.', consequence: 'Risco de explosão e intoxicação.', action: 'Processo parado, válvula de gás fechada, sirene acionada, ventilação em purga máxima (não desligar ventilação). Evacuar e só reentrar com liberação.' });
+      add({ id: `GAS2-${i}`, sev: 'crit', tag: `GD-${i + 1}`, msg: `${c}: GÁS PERIGOSO — nível 2 (${x.gas.toFixed(1)} %LIE) — EVACUAR`, cause: 'Vazamento de gás/vapor inflamável no processo.', consequence: 'Risco de explosão e intoxicação.', action: 'Processo parado (PM), válvula de gás fechada (XV), sirene de evacuação (SV), ventilação em purga máxima (não desligar ventilação). Evacuar e só reentrar com liberação formal.' });
     else if (x.gas >= 10)
-      add({ id: `GAS1-${i}`, sev: 'warn', tag: `GD-${i + 1}`, msg: `${c}: gás detectado — nível 1 (${x.gas.toFixed(1)} %LIE)`, cause: 'Presença de gás/vapor inflamável.', consequence: 'Atmosfera em alerta.', action: 'Ventilação do setor em 60 Hz (purga). Inspecionar fonte.' });
+      add({ id: `GAS1-${i}`, sev: 'warn', tag: `GD-${i + 1}`, msg: `${c}: gás detectado — nível 1 (${x.gas.toFixed(1)} %LIE)`, cause: 'Presença de gás/vapor inflamável.', consequence: 'Atmosfera em alerta.', action: 'Ventilação do setor em 60 Hz (purga) e sinalizador SV em alerta. Inspecionar a fonte.' });
     if (x.gasIsolated)
-      add({ id: `ISO-${i}`, sev: 'info', tag: `XV-${i + 1}`, msg: `${c}: válvula de isolamento fechada e processo bloqueado`, cause: 'Intertravamento de gás nível 2.', consequence: 'Máquinas do setor sem permissivo.', action: 'Rearme manual após atmosfera segura (< 5 %LIE).' });
+      add({ id: `ISO-${i}`, sev: 'info', tag: `XV-${i + 1}`, msg: `${c}: válvula de isolamento fechada e processo bloqueado — aguardando rearme`, cause: 'Intertravamento de gás nível 2 (retido).', consequence: 'Máquinas do setor sem permissivo; sinalização SV mantida.', action: 'Rearme manual na tela Alarmes. Exige fonte eliminada, gás < 5 %LIE, CLP em RUN e 380 Vca. O reset da demonstração (cenário 11) não equivale a rearme industrial.' });
     if (Math.abs(x.dp) > 12 && s.mains)
       add({ id: `DP-${i}`, sev: 'warn', tag: `PDT-${i + 1}`, msg: `${c}: desbalanço de pressão (${x.dp > 0 ? '+' : ''}${x.dp.toFixed(0)} Pa)`, cause: 'Diferença entre vazões de insuflação e exaustão.', consequence: x.dp > 0 ? 'Setor pressurizado: contaminantes migram para setores vizinhos.' : 'Setor em depressão: infiltração de ar externo quente.', action: 'Verificar ventiladores do setor.' });
   });

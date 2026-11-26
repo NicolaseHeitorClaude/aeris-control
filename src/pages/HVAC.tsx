@@ -90,7 +90,7 @@ export default function HVAC() {
       <h1 className="h1">Ventilação e refrigeração</h1>
       <p className="sub">
         12 insufladores + 12 exaustores (2 + 2 por setor), cada um com motor trifásico de 15 kW acionado por inversor de frequência.
-        A refrigeração é feita por 4 chillers de 1.550 kW térmicos, 3 bombas (2 + 1 reserva) e 6 UTAs com válvulas modulantes.
+        A refrigeração é feita por 4 chillers de 1.550 kW térmicos, 3 bombas (2 + 1 reserva) e 6 UTAs com válvulas modulantes. Renovação nominal: 6 ren./h a 60 Hz (720.000 m³/h, capacidade de projeto). Operação normal simulada: 2 ren./h a 20 Hz (240.000 m³/h, mínimo operacional), suficiente para a carga interna com ar insuflado a ~14 °C.
         {manual ? ' Modo MANUAL ativo: ajuste frequência, válvulas, chillers e bombas abaixo.' : ' Modo AUTOMÁTICO: o CLP calcula todas as referências.'}
       </p>
       <div style={{ marginBottom: 12 }}>

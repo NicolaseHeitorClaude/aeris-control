@@ -100,25 +100,41 @@ const DI = count('DI'),
   AI = count('AI'),
   AO = count('AO');
 export const MODULE_CH: Record<IOType, number> = { DI: 16, DO: 16, AI: 8, AO: 4 };
-const modules = (n: number, ch: number) => Math.ceil((n * 1.2) / ch); // +20 % de reserva
+export const IO_STATIONS = ['RIO-01', 'RIO-02', 'RIO-03', 'CPU'] as const;
+const TYPES: IOType[] = ['DI', 'DO', 'AI', 'AO'];
+/** Módulos por estação: cada estação recebe seus próprios módulos com +20 % de reserva. */
+const modulesFor = (n: number, ch: number) => (n === 0 ? 0 : Math.ceil((n * 1.2) / ch));
+export const IO_BY_STATION = IO_STATIONS.map((st) => {
+  const sig = Object.fromEntries(TYPES.map((t) => [t, IO_POINTS.filter((x) => x.station === st && x.type === t).length])) as Record<IOType, number>;
+  const mod = Object.fromEntries(TYPES.map((t) => [t, modulesFor(sig[t], MODULE_CH[t])])) as Record<IOType, number>;
+  return { station: st, signals: sig, modules: mod };
+});
+const sumModules = (t: IOType) => IO_BY_STATION.reduce((a, x) => a + x.modules[t], 0);
+
+/** Sinais gerados por instrumentos de campo (sensores, transmissores, fluxostatos, pressostatos). */
+const INSTR_TAG = /^(TT|HT|AQ|GD|TS|PDT|FS|FSW|PDS|FT)-/;
+export const INSTR_SIGNALS = IO_POINTS.filter((x) => INSTR_TAG.test(x.tag)).length;
+
 export const IO_SUMMARY = {
   DI,
   DO,
   AI,
   AO,
   total: DI + DO + AI + AO,
+  instrumentSignals: INSTR_SIGNALS,
+  otherSignals: DI + DO + AI + AO - INSTR_SIGNALS,
   modules: {
-    DI: modules(DI, MODULE_CH.DI),
-    DO: modules(DO, MODULE_CH.DO),
-    AI: modules(AI, MODULE_CH.AI),
-    AO: modules(AO, MODULE_CH.AO),
+    DI: sumModules('DI'),
+    DO: sumModules('DO'),
+    AI: sumModules('AI'),
+    AO: sumModules('AO'),
   },
 };
 
 export const INSTRUMENTS = [
   { tag: 'TH-1…7', qty: 7, desc: 'Transmissor combinado de temperatura e umidade (6 setores + 1 externo)', signals: '2 AI cada', base: true },
   { tag: 'AQ-1…6', qty: 6, desc: 'Sensor de CO₂ (NDIR, 0–2000 ppm)', signals: '1 AI', base: true },
-  { tag: 'GD-1…6', qty: 6, desc: 'Detector multigás (%LIE, O₂, CO, H₂S)', signals: '1 AI (%LIE simulado)', base: true },
+  { tag: 'GD-1…6', qty: 6, desc: 'Detector multigás previsto (%LIE, O₂, CO, H₂S); na simulação, somente %LIE', signals: '1 AI (%LIE simulado)', base: true },
   { tag: 'FS-…', qty: 24, desc: 'Fluxostato de ar (um por ventilador)', signals: '1 DI', base: true },
   { tag: 'TS-1…6', qty: 6, desc: 'Sensor de temperatura do ar insuflado (saída UTA)', signals: '1 AI', base: true },
   { tag: 'TT-AGS / TT-AGR', qty: 2, desc: 'Temperatura da água gelada ida/retorno', signals: '1 AI', base: false },

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { createInitialState, step, pushLog, type SimState, type Mode } from '../sim/model';
+import { createInitialState, step, pushLog, gasRearm, type SimState, type Mode } from '../sim/model';
 import { applyScenario } from '../sim/scenarios';
 
 /** Estado de simulação mutável (fonte única compartilhada por todas as telas e pela cena 3D). */
@@ -104,6 +104,11 @@ export const simActions = {
       pushLog(sim, { t: sim.t, id: a.id, sev: a.sev, tag: a.tag, msg: a.msg, event: 'RECONHECIDO' });
     }
     useUI.getState().bump();
+  },
+  gasRearm(i: number) {
+    const r = gasRearm(sim, i);
+    useUI.getState().bump();
+    return r;
   },
   update(fn: (s: SimState) => void) {
     fn(sim);

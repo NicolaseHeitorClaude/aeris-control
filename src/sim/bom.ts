@@ -27,7 +27,7 @@ export const BOM: BomItem[] = [
   // Instrumentação
   { group: 'Instrumentação', item: 'Transmissor de temperatura e umidade', qty: 7, un: 'pç', spec: '4–20 mA · 0–50 °C / 0–100 % UR' },
   { group: 'Instrumentação', item: 'Sensor de CO₂ (NDIR)', qty: 6, un: 'pç', spec: '0–2.000 ppm · 4–20 mA' },
-  { group: 'Instrumentação', item: 'Detector multigás fixo', qty: 6, un: 'pç', spec: '%LIE, O₂, CO, H₂S · 4–20 mA' },
+  { group: 'Instrumentação', item: 'Detector multigás fixo', qty: 6, un: 'pç', spec: 'previsto: %LIE, O₂, CO, H₂S (4 canais ou comunicação digital) · simulado: somente %LIE (1 AI)' },
   { group: 'Instrumentação', item: 'Fluxostato de ar', qty: 24, un: 'pç', spec: 'contato seco 24 Vcc' },
   { group: 'Instrumentação', item: 'Sensor de temperatura de ar insuflado', qty: 6, un: 'pç', spec: 'Pt100 com transmissor 4–20 mA' },
   { group: 'Instrumentação', item: 'Transmissor de temperatura de água gelada', qty: 2, un: 'pç', spec: 'ida / retorno · 4–20 mA' },
@@ -39,10 +39,10 @@ export const BOM: BomItem[] = [
   // Automação
   { group: 'Automação', item: 'CLP modular — CPU com PROFINET', qty: 1, un: 'pç', spec: 'ex.: Siemens S7-1500 (CPU 1515-2 PN) ou equivalente' },
   { group: 'Automação', item: 'Estação remota de E/S (interface PROFINET)', qty: 3, un: 'pç', spec: 'ex.: ET 200SP ou equivalente' },
-  { group: 'Automação', item: 'Módulo de entradas digitais 16 canais 24 Vcc', qty: IO_SUMMARY.modules.DI, un: 'pç', spec: `${IO_SUMMARY.DI} DI + 20 % reserva` },
-  { group: 'Automação', item: 'Módulo de saídas digitais 16 canais 24 Vcc', qty: IO_SUMMARY.modules.DO, un: 'pç', spec: `${IO_SUMMARY.DO} DO + 20 % reserva` },
-  { group: 'Automação', item: 'Módulo de entradas analógicas 8 canais 4–20 mA', qty: IO_SUMMARY.modules.AI, un: 'pç', spec: `${IO_SUMMARY.AI} AI + 20 % reserva` },
-  { group: 'Automação', item: 'Módulo de saídas analógicas 4 canais 4–20 mA', qty: IO_SUMMARY.modules.AO, un: 'pç', spec: `${IO_SUMMARY.AO} AO + 20 % reserva` },
+  { group: 'Automação', item: 'Módulo de entradas digitais 16 canais 24 Vcc', qty: IO_SUMMARY.modules.DI, un: 'pç', spec: `${IO_SUMMARY.DI} DI · +20 % de reserva por estação` },
+  { group: 'Automação', item: 'Módulo de saídas digitais 16 canais 24 Vcc', qty: IO_SUMMARY.modules.DO, un: 'pç', spec: `${IO_SUMMARY.DO} DO · +20 % de reserva por estação` },
+  { group: 'Automação', item: 'Módulo de entradas analógicas 8 canais 4–20 mA', qty: IO_SUMMARY.modules.AI, un: 'pç', spec: `${IO_SUMMARY.AI} AI · +20 % de reserva por estação` },
+  { group: 'Automação', item: 'Módulo de saídas analógicas 4 canais 4–20 mA', qty: IO_SUMMARY.modules.AO, un: 'pç', spec: `${IO_SUMMARY.AO} AO · +20 % de reserva por estação` },
   { group: 'Automação', item: 'Switch industrial gerenciável', qty: 4, un: 'pç', spec: 'PROFINET · anel MRP' },
   { group: 'Automação', item: 'IHM / estação de supervisão', qty: 1, un: 'pç', spec: 'AERIS CONTROL' },
   // Elétrica
@@ -52,7 +52,7 @@ export const BOM: BomItem[] = [
   { group: 'Elétrica', item: 'Dispositivo de proteção contra surtos (DPS)', qty: 1, un: 'cj', spec: 'classe II · 3 polos + PE' },
   { group: 'Elétrica', item: 'Disjuntor-motor / disjuntor de alimentador', qty: 32, un: 'pç', spec: '24 ventiladores + 3 bombas + 4 chillers + 1 fonte' },
   { group: 'Elétrica', item: 'Fonte industrial 24 Vcc, entrada trifásica', qty: 1, un: 'pç', spec: '3 × 380–480 Vca → 24 Vcc / 40 A' },
-  { group: 'Elétrica', item: 'Módulo buffer / UPS 24 Vcc com bateria', qty: 1, un: 'pç', spec: 'autonomia ~60 min para CLP e sensores' },
+  { group: 'Elétrica', item: 'Módulo buffer / UPS 24 Vcc com bateria', qty: 1, un: 'pç', spec: 'autonomia ~60 min (hipótese acadêmica, sem dimensionamento em Ah)' },
   { group: 'Elétrica', item: 'Relé de interface 24 Vcc', qty: IO_SUMMARY.DO, un: 'pç', spec: 'uma por saída digital' },
   { group: 'Elétrica', item: 'Relé de monitoramento de fases', qty: 1, un: 'pç', spec: 'falta / sequência de fases 380 V' },
   { group: 'Elétrica', item: 'Bornes, canaletas, trilhos DIN, identificação', qty: 1, un: 'vb', spec: 'conforme projeto executivo' },

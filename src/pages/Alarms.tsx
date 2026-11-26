@@ -1,8 +1,40 @@
-import { CheckCheck, Check } from 'lucide-react';
+import { CheckCheck, Check, ShieldAlert } from 'lucide-react';
 import { sim, useSim, simActions } from '../state/store';
-import { fmtTime } from '../sim/model';
+import { fmtTime, gasRearmCheck, GAS_REARM_MAX } from '../sim/model';
+import { SECTORS } from '../sim/constants';
 import { Panel, TrendChart } from '../components/ui';
 import { ScenarioList, ScenarioExplain, SevTag } from '../components/Shared';
+
+/** Intertravamentos de gás retidos e rearme industrial (condições verificadas). */
+function GasInterlocks() {
+  const latched = sim.sectors.map((x, i) => ({ x, i })).filter(({ x }) => x.gasIsolated);
+  if (!latched.length) return null;
+  return (
+    <Panel title={<><ShieldAlert size={14} /> Intertravamento de gás retido · rearme industrial</>}>
+      {latched.map(({ x, i }) => {
+        const chk = gasRearmCheck(sim, i);
+        return (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'center', marginBottom: 8 }}>
+            <div>
+              <div style={{ color: '#f4f7fa' }}>
+                {SECTORS[i].code} · {SECTORS[i].name} — XV-{i + 1} fechada, PM-{i + 1} bloqueado, SV-{i + 1} retido · gás {x.gas.toFixed(1)} %LIE
+              </div>
+              <div className={chk.ok ? 'ok' : 'warn'} style={{ fontSize: 11.5, marginTop: 3 }}>
+                {chk.ok ? `Condições atendidas (fonte eliminada, gás < ${GAS_REARM_MAX} %LIE, CLP em RUN, 380 Vca).` : `Rearme bloqueado: ${chk.reasons.join(' ')}`}
+              </div>
+            </div>
+            <button className={'btn ' + (chk.ok ? 'primary' : '')} disabled={!chk.ok} onClick={() => simActions.gasRearm(i)}>
+              Rearmar {SECTORS[i].code}
+            </button>
+          </div>
+        );
+      })}
+      <div className="dim" style={{ fontSize: 11.5 }}>
+        O rearme industrial verifica as condições de segurança antes de liberar o processo. O cenário 11 é apenas o reset da demonstração e não equivale a rearme.
+      </div>
+    </Panel>
+  );
+}
 
 export default function Alarms() {
   useSim();
@@ -15,6 +47,7 @@ export default function Alarms() {
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1fr) 260px' }}>
         <div className="grid" style={{ alignContent: 'start' }}>
           <ScenarioExplain />
+          <GasInterlocks />
           <Panel
             title={`Alarmes ativos · ${active.length}`}
             bodyClass=""

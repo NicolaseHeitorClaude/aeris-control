@@ -50,3 +50,64 @@ describe('modelo térmico', () => {
     console.log(IO_SUMMARY);
   });
 });
+
+describe('revisão técnica', () => {
+  it('sinais de instrumentação e módulos por estação', async () => {
+    const io = await import('../io');
+    expect(io.IO_SUMMARY.total).toBe(229);
+    expect(io.IO_SUMMARY.instrumentSignals).toBe(76);
+    expect(io.IO_SUMMARY.otherSignals).toBe(153);
+    expect(io.INSTR_BASE + io.INSTR_COMP).toBe(69);
+    expect(io.IO_SUMMARY.modules).toEqual({ DI: 11, DO: 7, AI: 7, AO: 9 });
+  });
+  it('operação normal a 2 ren./h (20 Hz)', () => {
+    const s = createInitialState();
+    run(s, 3600);
+    s.fans.forEach((f) => expect(f.hz).toBeCloseTo(20, 0));
+  });
+  it('cenários 4 e 5: sinal da pressão diferencial', () => {
+    const a = createInitialState();
+    run(a, 600);
+    applyScenario(a, 'supfail');
+    run(a, 1800);
+    expect(a.sectors[1].dp).toBeGreaterThan(0);
+    const b = createInitialState();
+    run(b, 600);
+    applyScenario(b, 'exhfail');
+    run(b, 1800);
+    expect(b.sectors[2].dp).toBeLessThan(0);
+    report('supfail', a);
+    report('exhfail', b);
+  });
+  it('rearme de gás condicionado; reset da demonstração separado', async () => {
+    const m = await import('../model');
+    const s = createInitialState();
+    applyScenario(s, 'gas');
+    let n = 0;
+    while (!s.sectors[4].gasIsolated && n++ < 7200) step(s);
+    expect(s.sectors[4].gasIsolated).toBe(true);
+    expect(m.sirenOn(s, 4)).toBe(true);
+    // fonte ativa e gás alto: rearme recusado
+    expect(m.gasRearm(s, 4).ok).toBe(false);
+    expect(s.sectors[4].gasIsolated).toBe(true);
+    // cenário 1 elimina a fonte, mas não libera o intertravamento
+    applyScenario(s, 'normal');
+    expect(s.sectors[4].gasIsolated).toBe(true);
+    expect(s.sectors[4].processOn).toBe(false);
+    expect(m.gasRearm(s, 4).ok).toBe(false); // gás ainda ≥ 5 %LIE
+    run(s, 3600);
+    expect(s.sectors[4].gas).toBeLessThan(5);
+    expect(m.sirenOn(s, 4)).toBe(true); // sinalização retida até o rearme
+    expect(m.gasRearm(s, 4).ok).toBe(true);
+    expect(s.sectors[4].gasIsolated).toBe(false);
+    expect(s.sectors[4].processOn).toBe(true);
+    expect(m.sirenOn(s, 4)).toBe(false);
+    // reset da demonstração
+    applyScenario(s, 'gas');
+    n = 0;
+    while (!s.sectors[4].gasIsolated && n++ < 7200) step(s);
+    applyScenario(s, 'reset');
+    expect(s.sectors[4].gasIsolated).toBe(false);
+    expect(s.sectors[4].gas).toBe(0);
+  });
+});
