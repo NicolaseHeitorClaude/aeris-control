@@ -1,11 +1,12 @@
 import { useEffect, useState, lazy, Suspense } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  LayoutDashboard, Box, Fan, Zap, Cpu, BellRing, FileText, ListChecks, Play, Pause, RotateCcw, Presentation, ChevronLeft, ChevronRight, X,
+  LayoutDashboard, Box, Fan, Zap, Cpu, BellRing, ListChecks, Minimize2, Play, Pause, RotateCcw, Presentation, ChevronLeft, ChevronRight, X,
 } from 'lucide-react';
 import { sim, useSim, useUI, simActions } from './state/store';
 import { fmtTime } from './sim/model';
 import { SCENARIOS } from './sim/scenarios';
+import { enterPresentation, exitPresentation, bindFullscreenSync } from './presentation';
 
 const Overview = lazy(() => import('./pages/Overview'));
 const PlantPage = lazy(() => import('./pages/PlantPage'));
@@ -13,7 +14,6 @@ const HVAC = lazy(() => import('./pages/HVAC'));
 const Electrical = lazy(() => import('./pages/Electrical'));
 const PLC = lazy(() => import('./pages/PLC'));
 const Alarms = lazy(() => import('./pages/Alarms'));
-const Memorial = lazy(() => import('./pages/Memorial'));
 const BOM = lazy(() => import('./pages/BOM'));
 
 export const PAGES = [
@@ -23,7 +23,6 @@ export const PAGES = [
   { id: 'electrical', label: 'Sistema elétrico', icon: Zap, C: Electrical },
   { id: 'plc', label: 'CLP e sensores', icon: Cpu, C: PLC },
   { id: 'alarms', label: 'Alarmes', icon: BellRing, C: Alarms },
-  { id: 'memorial', label: 'Memorial técnico', icon: FileText, C: Memorial },
   { id: 'bom', label: 'Lista de materiais', icon: ListChecks, C: BOM },
 ];
 
@@ -86,7 +85,6 @@ function Header() {
   useSim();
   const page = useUI((s) => s.page);
   const pres = useUI((s) => s.presentation);
-  const setPres = useUI((s) => s.setPresentation);
   const scenario = useUI((s) => s.scenario);
   const p = PAGES.find((x) => x.id === page);
   const crit = Object.values(sim.alarms).filter((a) => a.sev === 'crit').length;
@@ -136,12 +134,9 @@ function Header() {
         </button>
         <button
           className={'icon-btn' + (pres ? ' on' : '')}
-          onClick={() => {
-            setPres(!pres);
-            if (!pres) document.documentElement.requestFullscreen?.().catch(() => {});
-            else if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
-          }}
+          onClick={() => (pres ? exitPresentation() : enterPresentation())}
           title="Modo apresentação (tela cheia)"
+          aria-label="Modo apresentação"
         >
           <Presentation size={14} />
         </button>
@@ -150,58 +145,104 @@ function Header() {
   );
 }
 
-const PRES_STEPS = ['overview', 'plant', 'hvac', 'electrical', 'plc', 'alarms', 'memorial', 'bom'];
+const PRES_STEPS = ['overview', 'plant', 'hvac', 'electrical', 'plc', 'alarms', 'bom'];
+const PRES_SHORT: Record<string, string> = {
+  overview: 'Visão geral',
+  plant: 'Planta 3D',
+  hvac: 'Ventilação',
+  electrical: 'Elétrico',
+  plc: 'CLP',
+  alarms: 'Alarmes',
+  bom: 'Materiais',
+};
 
-function PresentationBar() {
-  const page = useUI((s) => s.page);
-  const setPage = useUI((s) => s.setPage);
-  const setPres = useUI((s) => s.setPresentation);
-  const scenario = useUI((s) => s.scenario);
-  const last = useUI((s) => s.lastScenario);
-  const idx = Math.max(0, PRES_STEPS.indexOf(page));
+/** Teclado no modo apresentação: setas navegam, ESC sai, 1–9/0 disparam cenários. */
+function usePresentationKeys(active: boolean) {
   useEffect(() => {
+    if (!active) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight') setPage(PRES_STEPS[Math.min(PRES_STEPS.length - 1, idx + 1)]);
-      if (e.key === 'ArrowLeft') setPage(PRES_STEPS[Math.max(0, idx - 1)]);
-      if (e.key === 'Escape') setPres(false);
-      const n = parseInt(e.key, 10);
-      if (!Number.isNaN(n) && n >= 1 && n <= 9) scenario(SCENARIOS[n - 1].id);
-      if (e.key === '0') scenario('power');
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      const ui = useUI.getState();
+      const idx = Math.max(0, PRES_STEPS.indexOf(ui.page));
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        ui.setPage(PRES_STEPS[Math.min(PRES_STEPS.length - 1, idx + 1)]);
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        ui.setPage(PRES_STEPS[Math.max(0, idx - 1)]);
+      } else if (e.key === 'Escape') {
+        exitPresentation();
+      } else if (/^[0-9]$/.test(e.key)) {
+        const n = +e.key;
+        ui.scenario(n === 0 ? 'power' : SCENARIOS[n - 1].id);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [idx, setPage, setPres, scenario]);
+  }, [active]);
+}
+
+function PresentationBar() {
+  useSim();
+  const page = useUI((s) => s.page);
+  const setPage = useUI((s) => s.setPage);
+  const scenario = useUI((s) => s.scenario);
+  const last = useUI((s) => s.lastScenario);
+  const fs = useUI((s) => s.presentationFs);
+  const idx = Math.max(0, PRES_STEPS.indexOf(page));
+  const crit = Object.values(sim.alarms).filter((a) => a.sev === 'crit').length;
+  const warn = Object.values(sim.alarms).filter((a) => a.sev === 'warn').length;
   return (
-    <div className="pres-bar no-print">
-      <button className="icon-btn" onClick={() => setPage(PRES_STEPS[Math.max(0, idx - 1)])} aria-label="Anterior">
+    <motion.div
+      className="pres-bar no-print"
+      initial={{ opacity: 0, y: 24 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.32, ease: [0.2, 0.8, 0.2, 1] }}
+    >
+      <img src="./brand/aeris-symbol.png" alt="AERIS" className="pres-sym" />
+      <button className="icon-btn" onClick={() => setPage(PRES_STEPS[Math.max(0, idx - 1)])} aria-label="Tela anterior" title="Tela anterior (←)">
         <ChevronLeft size={15} />
       </button>
       {PRES_STEPS.map((id, i) => (
         <button key={id} className={'step' + (page === id ? ' on' : '')} onClick={() => setPage(id)}>
-          {i + 1}. {PAGES.find((p) => p.id === id)?.label}
+          {i + 1}. {PRES_SHORT[id]}
         </button>
       ))}
-      <button className="icon-btn" onClick={() => setPage(PRES_STEPS[Math.min(PRES_STEPS.length - 1, idx + 1)])} aria-label="Próximo">
+      <button className="icon-btn" onClick={() => setPage(PRES_STEPS[Math.min(PRES_STEPS.length - 1, idx + 1)])} aria-label="Próxima tela" title="Próxima tela (→)">
         <ChevronRight size={15} />
       </button>
       <span className="sep" />
       {SCENARIOS.map((s) => (
-        <button key={s.id} className={'step' + (last === s.id ? ' on' : '')} onClick={() => scenario(s.id)} title={s.title}>
+        <button key={s.id} className={'step sc' + (last === s.id ? ' on' : '')} onClick={() => scenario(s.id)} title={`Cenário ${s.n}: ${s.title}`}>
           {s.n}
         </button>
       ))}
       <span className="sep" />
-      <button
-        className="icon-btn"
-        onClick={() => {
-          setPres(false);
-          if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
-        }}
-        aria-label="Sair da apresentação"
-      >
-        <X size={15} />
+      <div className="chip" title="Tempo simulado">{fmtTime(sim.t)}</div>
+      <div className="chip" title="Alarmes ativos">
+        <span className={'dot' + (crit ? ' off' : warn ? ' warn' : '')} /> {crit}/{warn}
+      </div>
+      <div className="seg" title="Modo de operação">
+        <button className={sim.mode === 'auto' ? 'on' : ''} onClick={() => simActions.setMode('auto')}>AUTO</button>
+        <button className={sim.mode === 'manual' ? 'on' : ''} onClick={() => simActions.setMode('manual')}>MAN</button>
+      </div>
+      <button className="icon-btn" onClick={() => simActions.setRunning(!sim.running)} title={sim.running ? 'Pausar' : 'Retomar'} aria-label={sim.running ? 'Pausar' : 'Retomar'}>
+        {sim.running ? <Pause size={14} /> : <Play size={14} />}
       </button>
-    </div>
+      <div className="seg" title="Aceleração do tempo simulado">
+        {[1, 10, 60, 240].map((x) => (
+          <button key={x} className={sim.speed === x ? 'on' : ''} onClick={() => simActions.setSpeed(x)}>
+            {x}×
+          </button>
+        ))}
+      </div>
+      <span className="sep" />
+      <button className="icon-btn pres-exit" onClick={exitPresentation} aria-label="Sair da apresentação" title={fs ? 'Sair da apresentação (ESC)' : 'Sair da apresentação (ESC) — tela cheia indisponível, modo janela'}>
+        <Minimize2 size={14} />
+      </button>
+    </motion.div>
   );
 }
 
@@ -209,15 +250,15 @@ export default function App() {
   const [splash, setSplash] = useState(true);
   const page = useUI((s) => s.page);
   const pres = useUI((s) => s.presentation);
-  const setPres = useUI((s) => s.setPresentation);
+  const setPage = useUI((s) => s.setPage);
+  const known = PAGES.some((p) => p.id === page);
   const P = (PAGES.find((p) => p.id === page) ?? PAGES[0]).C;
+  useEffect(() => bindFullscreenSync(), []);
+  usePresentationKeys(pres);
+  // Rotas removidas ou desconhecidas (ex.: #/memorial) voltam para a visão geral
   useEffect(() => {
-    const onFs = () => {
-      if (!document.fullscreenElement && useUI.getState().presentation) setPres(false);
-    };
-    document.addEventListener('fullscreenchange', onFs);
-    return () => document.removeEventListener('fullscreenchange', onFs);
-  }, [setPres]);
+    if (!known) setPage('overview');
+  }, [known, setPage]);
   return (
     <>
       <div className={'app' + (pres ? ' present' : '')}>
@@ -239,8 +280,8 @@ export default function App() {
               </Suspense>
             </motion.div>
           </AnimatePresence>
-          {pres && <PresentationBar />}
         </main>
+        {pres && <PresentationBar />}
       </div>
       <AnimatePresence>{splash && <Splash onDone={() => setSplash(false)} />}</AnimatePresence>
     </>

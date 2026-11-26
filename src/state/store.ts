@@ -20,12 +20,14 @@ interface UIState {
   labels: boolean;
   camView: { name: string; n: number };
   presentation: boolean;
+  presentationFs: boolean;
   lastScenario: string | null;
   setPage: (p: string) => void;
   select: (s: Selection) => void;
   toggle: (k: 'roofVisible' | 'airflow' | 'labels' | 'wallsVisible') => void;
   setView: (name: string) => void;
   setPresentation: (b: boolean) => void;
+  setPresentationFs: (b: boolean) => void;
   scenario: (id: string) => void;
   bump: () => void;
 }
@@ -42,6 +44,7 @@ export const useUI = create<UIState>((set, get) => ({
   labels: true,
   camView: { name: 'iso', n: 0 },
   presentation: false,
+  presentationFs: false,
   lastScenario: null,
   setPage: (p) => {
     if (location.hash !== '#/' + p) location.hash = '/' + p;
@@ -51,6 +54,7 @@ export const useUI = create<UIState>((set, get) => ({
   toggle: (k) => set({ [k]: !get()[k] } as Partial<UIState>),
   setView: (name) => set({ camView: { name, n: get().camView.n + 1 } }),
   setPresentation: (b) => set({ presentation: b }),
+  setPresentationFs: (b) => set({ presentationFs: b }),
   scenario: (id) => {
     applyScenario(sim, id);
     set({ lastScenario: id, v: get().v + 1 });
