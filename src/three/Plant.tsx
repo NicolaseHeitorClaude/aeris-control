@@ -362,7 +362,7 @@ function FanLabel({ id }: { id: string }) {
   const f = sim.fans.find((x) => x.id === id)!;
   if (!f.fault && !(selected?.kind === 'fan' && selected.id === id)) return null;
   return (
-    <Html position={[0, 2.1, 0]} zIndexRange={[10, 0]} distanceFactor={80}>
+    <Html position={[0, 2.1, 0]} zIndexRange={[10, 0]}>
       <div className={'label3d' + (f.fault ? ' alarm' : '')}>
         <b>{id}</b>
         {f.fault ? 'FALHA' : `${f.hz.toFixed(0)} Hz`}
@@ -583,7 +583,7 @@ function ChillerLabel({ i }: { i: number }) {
   if (!labels) return null;
   const c = sim.chillers[i];
   return (
-    <Html position={[0, 5.4, 0]} distanceFactor={80} zIndexRange={[10, 0]}>
+    <Html position={[0, 5.4, 0]} zIndexRange={[10, 0]}>
       <div className={'label3d' + (c.fault ? ' alarm' : '')}>
         <b>{c.id}</b>
         {c.fault ? 'FALHA' : c.on ? `${(c.load * 100).toFixed(0)} %` : c.starting > 0 ? 'PARTIDA' : 'STAND-BY'}
@@ -718,7 +718,7 @@ function SectorLabels() {
         const s = sim.sectors[d.id];
         const alarm = s.gas >= 10 || s.T >= 27;
         return (
-          <Html key={d.id} position={[d.cx, 8.5, d.cz]} distanceFactor={110} zIndexRange={[20, 0]}>
+          <Html key={d.id} position={[d.cx, 8.5, d.cz]} zIndexRange={[20, 0]}>
             <div
               className={'label3d big' + (alarm ? ' alarm' : '')}
               style={{ pointerEvents: 'auto', cursor: 'pointer' }}
